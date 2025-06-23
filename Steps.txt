@@ -1,0 +1,114 @@
+Setup and Installation Guide
+This guide will walk you through setting up the Jenkins server, configuring tools, and running the CI/CD pipeline. The Java application code is sourced from a public repository, with the focus of this project being the pipeline itself.
+
+Prerequisites
+An operating system capable of running Jenkins (e.g., Ubuntu Linux).
+Git installed.
+Docker Engine installed and running (for SonarQube container).
+A running Jenkins instance (ensure it has sufficient resources, especially for builds with multiple tools).
+An active Docker Hub account (if you were to re-enable the Docker build and push stages).
+A SonarQube server instance running (e.g., run SonarQube in a Docker container using sudo docker run -d --name sonar-server -p 9000:9000 sonarqube:lts-community).
+Part 1: Setting up the Jenkins Server and Core Tools (On your Ubuntu Server)
+Prepare your Ubuntu Server:
+Bash
+
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y wget curl unzip gnupg lsb-release
+Install Java (OpenJDK 17):
+Bash
+
+sudo apt install -y openjdk-17-jdk
+java -version # Verify installation, you should see 'openjdk version "17.0.x"'
+Install Jenkins:
+Bash
+
+sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]" \
+  https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+  /etc/apt/sources.list.d/jenkins.list > /dev/null
+sudo apt update
+sudo apt install -y jenkins
+sudo systemctl status jenkins # Should be 'active (running)'
+Initial Jenkins Setup (Web UI):
+Access Jenkins at http://YOUR_SERVER_IP:8080.
+Get initial admin password: sudo cat /var/lib/jenkins/secrets/initialAdminPassword.
+Paste password, install suggested plugins, create admin user, save URL.
+Install Docker:
+Bash
+
+sudo apt update
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo docker run hello-world # Verify
+sudo usermod -aG docker jenkins # Add jenkins user to docker group
+sudo systemctl restart docker
+sudo systemctl restart jenkins
+Install Maven:
+Bash
+
+sudo apt install -y maven
+mvn -version # Verify
+Install SonarQube (as a Docker Container):
+Bash
+
+sudo docker run -d --name sonar-server -p 9000:9000 sonarqube:lts-community
+Wait a few minutes, then access http://YOUR_SERVER_IP:9000.
+Log in (admin/admin), change password.
+Generate a SonarQube token: Administration > Security > Users > admin user > Tokens. Copy this token immediately!
+Install Trivy:
+Bash
+
+sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y trivy
+trivy --version # Verify
+Part 2: Configuring Jenkins Global Tools and Credentials (Jenkins Web UI)
+Navigate to Jenkins Dashboard -> Manage Jenkins.
+
+Install Required Jenkins Plugins:
+Go to Plugins -> Available plugins. Install: Maven Integration plugin, SonarQube Scanner, OWASP Dependency-Check, Docker, Docker Pipeline (if not already installed by "Install suggested plugins"). Restart Jenkins if prompted.
+Configure Global Tool Configurations:
+Go to Global Tool Configuration.
+JDK: Add JDK (Name: jdk17, Install automatically from Adoptium, Version: 17.0.x).
+Maven: Add Maven (Name: Maven3, Install automatically, latest version).
+SonarQube Scanner: Add SonarQube Scanner (Name: SonarScanner, Install automatically, latest version).
+OWASP Dependency-Check: Add (Name: DependencyCheck, Install automatically, Version: 6.5.1 or latest).
+Docker: Add (Name: Docker, Install automatically, latest version).
+Configure System (SonarQube Server):
+Go to Configure System.
+Scroll to SonarQube Servers. Click Add SonarQube.
+Name: SonarServer
+Server URL: http://YOUR_SERVER_IP:9000
+Authentication Token: Click "Add" -> "Jenkins". Kind: Secret text. Secret: Paste your SonarQube token. ID: sonar-token. Click "Add". Then select sonar-token from dropdown.
+Add Credentials (Docker Hub):
+Go to Credentials -> System -> Global credentials (unrestricted) -> Add Credentials.
+Kind: Username with password.
+Username: Your Docker Hub username.
+Password: Your Docker Hub password.
+ID: docker-cred.
+Click "Create".
+Part 3: Preparing the Java Application
+Fork the Repository: Fork https://github.com/prashant-sagar/java-web-app to your own GitHub account.
+Review pom.xml and Dockerfile: Understand the application's build and containerization (even if not strictly used in this pipeline due to removals).
+Part 4: Creating the Jenkins Pipeline Job
+Create New Jenkins Job:
+Go to Jenkins Dashboard -> New Item.
+Item Name: java-web-app-ci-cd.
+Select: "Pipeline". Click "OK".
+Configure Pipeline Job:
+General Tab: Check "Discard old builds", set "Max # of builds to keep" to 2.
+Pipeline Tab:
+Definition: "Pipeline script".
+Script: Paste the following Jenkinsfile content.
+<!-- end list -->
